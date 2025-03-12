@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <input type="file" id="firmwareFile" accept=".bin" />
+    <button onclick="uploadFirmware()">Upload</button>
+
+    <script>
+      function uploadFirmware() {
+        const file = document.getElementById("firmwareFile").files[0];
+        if (file) sendFirmware(file);
+      }
+    </script>
+
+    <script>
+      if ("serial" in navigator) {
+        console.log("✅ Trình duyệt của bạn hỗ trợ Web Serial API!");
+      } else {
+        console.log("❌ Trình duyệt của bạn không hỗ trợ Web Serial API!");
+      }
+      let port;
+
+      async function connectToESP32() {
+        try {
+          port = await navigator.serial.requestPort(); // Chọn cổng COM của ESP32
+          await port.open({ baudRate: 115200 }); // Tốc độ baud phổ biến của ESP32
+          console.log("✅ Kết nối thành công!");
+        } catch (error) {
+          console.error("❌ Lỗi kết nối:", error);
+        }
+      }
+      async function sendCommand(command) {
+        if (!port) {
+          console.error("❌ Chưa kết nối với ESP32!");
+          return;
+        }
+
+        const writer = port.writable.getWriter();
+        const encoder = new TextEncoder();
+        await writer.write(encoder.encode(command + "\n"));
+        writer.releaseLock();
+
+        console.log("📩 Đã gửi lệnh:", command);
+      }
+      sendCommand("AT+RST");
+      async function readResponse() {
+        if (!port) {
+          console.error("❌ Chưa kết nối với ESP32!");
+          return;
+        }
+
+        const reader = port.readable.getReader();
+        const decoder = new TextDecoder();
+
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            console.log("📩 ESP32:", decoder.decode(value));
+          }
+        } catch (error) {
+          console.error("❌ Lỗi đọc dữ liệu:", error);
+        } finally {
+          reader.releaseLock();
+        }
+      }
+      readResponse();
+      async function sendFirmware(file) {
+        if (!port) {
+          console.error("❌ Chưa kết nối với ESP32!");
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.readAsArrayBuffer(file);
+
+        reader.onload = async function () {
+          const writer = port.writable.getWriter();
+          await writer.write(new Uint8Array(reader.result));
+          writer.releaseLock();
+          console.log("✅ Đã gửi firmware thành công!");
+        };
+
+        reader.onerror = function () {
+          console.error("❌ Lỗi đọc file firmware!");
+        };
+      }
+      async function disconnectESP32() {
+        if (port) {
+          await port.close();
+          port = null;
+          console.log("✅ Đã ngắt kết nối ESP32!");
+        }
+      }
+    </script>
+  </body>
+</html>
