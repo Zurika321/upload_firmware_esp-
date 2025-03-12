@@ -10,13 +10,38 @@
         text-align: center;
         padding: 20px;
       }
-      button {
-        margin: 10px;
-        padding: 10px 20px;
-        font-size: 16px;
-      }
+      button,
       input {
         margin: 10px;
+        padding: 10px;
+        font-size: 16px;
+      }
+      #tabs {
+        margin-top: 20px;
+      }
+      .tab-button {
+        padding: 10px 20px;
+        cursor: pointer;
+        background: lightgray;
+        border: none;
+        font-size: 16px;
+      }
+      .tab-button.active {
+        background: darkgray;
+      }
+      .tab-content {
+        display: none;
+        border: 1px solid #ccc;
+        padding: 10px;
+        margin-top: 10px;
+        text-align: left;
+        max-height: 300px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        font-family: monospace;
+      }
+      .tab-content.active {
+        display: block;
       }
     </style>
   </head>
@@ -27,28 +52,100 @@
     <button id="upload" disabled>⬆️ Upload Firmware</button>
     <p id="status">Trạng thái: Chưa kết nối</p>
 
+    <div id="tabs">
+      <button class="tab-button active" onclick="switchTab('console')">
+        📜 Console
+      </button>
+      <button class="tab-button" onclick="switchTab('file')">📂 File</button>
+    </div>
+
+    <div id="consoleTab" class="tab-content active"></div>
+    <div id="fileTab" class="tab-content"></div>
+
     <script>
-      let port;
-      let writer;
-      let reader;
+      if ("serial" in navigator) {
+        console.log("✅ Trình duyệt của bạn hỗ trợ Web Serial API!");
+      } else {
+        console.log("❌ Trình duyệt của bạn không hỗ trợ Web Serial API!");
+      }
+      let port, writer, reader;
+
+      function logMessage(message, type) {
+        const consoleTab = document.getElementById("consoleTab");
+        consoleTab.innerHTML += message + "\n";
+        consoleTab.scrollTop = consoleTab.scrollHeight;
+
+        if (type) console.error(message);
+        else console.log(message);
+      }
+
+      async function sendCommand(command) {
+        if (!port) logMessage("❌ Không tìm thấy ESP32!", true);
+        else logMessage("✅ Tìm thấy thiết bị ESP32!, hãy kết nối.");
+      }
+      sendCommand("AT+RST");
+
+      function switchTab(tab) {
+        document
+          .querySelectorAll(".tab-button")
+          .forEach((btn) => btn.classList.remove("active"));
+        document
+          .querySelectorAll(".tab-content")
+          .forEach((tab) => tab.classList.remove("active"));
+        document
+          .querySelector(`button[onclick="switchTab('${tab}')"]`)
+          .classList.add("active");
+        document.getElementById(tab + "Tab").classList.add("active");
+      }
 
       document.getElementById("connect").addEventListener("click", async () => {
         try {
-          port = await navigator.serial.requestPort(); // Chọn cổng USB
-          await port.open({ baudRate: 115200 }); // Mở kết nối Serial
+          port = await navigator.serial.requestPort();
+          await port.open({ baudRate: 115200 });
           writer = port.writable.getWriter();
           reader = port.readable.getReader();
-          document.getElementById("status").innerText = "Đã kết nối ESP!";
+          document.getElementById("status").innerText = "✅ Đã kết nối ESP!";
           document.getElementById("upload").disabled = false;
+          logMessage("✅ Kết nối ESP thành công!");
         } catch (error) {
-          alert("Không thể kết nối ESP: " + error);
+          logMessage("❌ Lỗi kết nối: " + error);
         }
       });
+
+      document
+        .getElementById("fileInput")
+        .addEventListener("change", function () {
+          const file = this.files[0];
+          if (file) {
+            if (file.name.endsWith(".bin")) {
+              logMessage("📂 File hợp lệ: " + file.name);
+              readFirmwareFile(file);
+            } else {
+              logMessage("❌ File không hợp lệ! Chỉ chấp nhận .bin");
+              this.value = ""; // Xóa file không hợp lệ
+            }
+          }
+        });
+
+      async function readFirmwareFile(file) {
+        const reader = new FileReader();
+        reader.onload = function (event) {
+          const buffer = new Uint8Array(event.target.result);
+          let hexString = "";
+          for (let i = 0; i < buffer.length; i++) {
+            hexString += buffer[i].toString(16).padStart(2, "0") + " ";
+            if ((i + 1) % 16 === 0) hexString += "\n";
+          }
+          document.getElementById("fileTab").innerText = hexString;
+          logMessage("📜 Đã đọc nội dung file firmware!");
+        };
+        reader.readAsArrayBuffer(file);
+      }
 
       document.getElementById("upload").addEventListener("click", async () => {
         const fileInput = document.getElementById("fileInput");
         if (!fileInput.files.length) {
-          alert("Hãy chọn một file firmware (.bin)!");
+          logMessage("❌ Hãy chọn một file firmware (.bin)!");
           return;
         }
 
@@ -58,14 +155,16 @@
         reader.onload = async (event) => {
           const firmwareData = new Uint8Array(event.target.result);
           document.getElementById("status").innerText = "Đang upload...";
+          logMessage("⬆️ Bắt đầu upload firmware...");
 
           for (let i = 0; i < firmwareData.length; i += 512) {
             let chunk = firmwareData.slice(i, i + 512);
             await writer.write(chunk);
-            await new Promise((r) => setTimeout(r, 50)); // Đợi ESP xử lý
+            await new Promise((r) => setTimeout(r, 50));
           }
 
-          document.getElementById("status").innerText = "Upload hoàn tất!";
+          document.getElementById("status").innerText = "✅ Upload hoàn tất!";
+          logMessage("✅ Upload hoàn tất!");
         };
 
         reader.readAsArrayBuffer(file);
