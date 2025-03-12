@@ -91,7 +91,7 @@
       document
         .getElementById("connectWebREPL")
         .addEventListener("click", () => {
-          const esp32Ip = prompt("Nhập IP của ESP32:", "192.168.4.1");
+          const esp32Ip = prompt("Nhập IP của ESP32:", "192.168.1.29");
           webreplSocket = new WebSocket(`ws://${esp32Ip}:8266`);
 
           webreplSocket.onopen = () =>
