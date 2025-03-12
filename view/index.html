@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ESP32 Firmware Uploader</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        padding: 20px;
+      }
+      button {
+        margin: 10px;
+        padding: 10px 20px;
+        font-size: 16px;
+      }
+      input {
+        margin: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Upload Firmware cho ESP32 qua USB</h2>
+    <button id="connect">🔌 Kết nối ESP</button>
+    <input type="file" id="fileInput" accept=".bin" />
+    <button id="upload" disabled>⬆️ Upload Firmware</button>
+    <p id="status">Trạng thái: Chưa kết nối</p>
+
+    <script>
+      let port;
+      let writer;
+      let reader;
+
+      document.getElementById("connect").addEventListener("click", async () => {
+        try {
+          port = await navigator.serial.requestPort(); // Chọn cổng USB
+          await port.open({ baudRate: 115200 }); // Mở kết nối Serial
+          writer = port.writable.getWriter();
+          reader = port.readable.getReader();
+          document.getElementById("status").innerText = "Đã kết nối ESP!";
+          document.getElementById("upload").disabled = false;
+        } catch (error) {
+          alert("Không thể kết nối ESP: " + error);
+        }
+      });
+
+      document.getElementById("upload").addEventListener("click", async () => {
+        const fileInput = document.getElementById("fileInput");
+        if (!fileInput.files.length) {
+          alert("Hãy chọn một file firmware (.bin)!");
+          return;
+        }
+
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+
+        reader.onload = async (event) => {
+          const firmwareData = new Uint8Array(event.target.result);
+          document.getElementById("status").innerText = "Đang upload...";
+
+          for (let i = 0; i < firmwareData.length; i += 512) {
+            let chunk = firmwareData.slice(i, i + 512);
+            await writer.write(chunk);
+            await new Promise((r) => setTimeout(r, 50)); // Đợi ESP xử lý
+          }
+
+          document.getElementById("status").innerText = "Upload hoàn tất!";
+        };
+
+        reader.readAsArrayBuffer(file);
+      });
+    </script>
+  </body>
+</html>
